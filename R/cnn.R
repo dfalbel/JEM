@@ -4,7 +4,7 @@ cnn <- torch::nn_module(
     self$conv1 <- torch::nn_conv2d(1, 32, 3, 1)
     self$conv2 <- torch::nn_conv2d(32, 64, 3, 1)
     self$fc1 <- torch::nn_linear(9216, 128)
-    self$fc2 <- torch::nn_linear(9216, n_classes)
+    self$fc2 <- torch::nn_linear(128, n_classes)
   },
   forward = function(x) {
     x <- self$conv1(x)

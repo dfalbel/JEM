@@ -1,12 +1,8 @@
 replay_buffer <- torch::nn_module(
   initialize = function(buffer_size) {
-    self$max_size <- max_size
+    self$max_size <- buffer_size
     self$buffer <- list()
     self$init_length <- 0
-  },
-  seed_buffer = function(episodes) {
-    self$init_length <- length(episodes)
-    self$add(episodes)
   },
   next_buffer_idx = function() {
     if (length(self$buffer) < self$max_size)
@@ -17,7 +13,7 @@ replay_buffer <- torch::nn_module(
   add = function(episodes) {
 
     # allows passing a batch of tensors
-    if (torch::is_torch_tensor(episodes)) {
+    if (torch:::is_torch_tensor(episodes)) {
       episodes <- torch::torch_unbind(episodes)
     }
 
@@ -28,6 +24,6 @@ replay_buffer <- torch::nn_module(
   },
   get_batch = function(n) {
     idx <- sample.int(length(self$buffer), size = n)
-    self$buffer[idx]
+    torch::torch_stack(self$buffer[idx])
   }
 )
