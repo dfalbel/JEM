@@ -1,4 +1,6 @@
 default:
+  dataset: "mnist"
+  model: "mlp"
   n_epochs: 20
   lr: 0.001
   rho: 0.05
@@ -6,5 +8,5 @@ default:
   sigma: 0.01
   alpha: 1
   buffer_size: 10000
-  device: "cpu"
+  device: "cuda"
   batch_size: 100
