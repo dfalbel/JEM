@@ -6,7 +6,7 @@ mlp <- torch::nn_module(
   },
   forward = function(x) {
     x %>%
-      torch::torch_flatten(start_dim = 2) %>%
+      #torch::torch_flatten(start_dim = 2) %>%
       self$l1() %>%
       torch::nnf_relu() %>%
       self$l2() %>%

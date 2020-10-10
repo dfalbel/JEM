@@ -6,44 +6,28 @@ bar <- function(length) {
 }
 
 logsumexp <- function(x) {
-  torch::torch_logsumexp(x, dim = 2)$view(c(x$shape[1], 1))
+  torch::torch_logsumexp(x, dim = 2)
 }
 
-sgld_sample <- function(model, buffer) {
+sgld_sample <- function(model, x) {
 
-  rho <- config::get("rho")
   eta <- config::get("eta")
   alpha <- config::get("alpha")
   sigma <- config::get("sigma")
-  batch_size <- config::get("batch_size")
-  device <- config::get("device")
-
-  n <- rbinom(1, batch_size, prob = 1 - rho)
-  buffer_batch <- buffer$get_batch(n)
-
-  size <- c(batch_size - n, buffer_batch$shape[-1])
-  random_batch <- torch::torch_empty(size = size)$uniform_(-1, 1)$to(device = device)
-
-  x <- torch::torch_cat(list(buffer_batch, random_batch))
-  x <- x$to(device = device)
+  
   x$requires_grad_(TRUE)
-
   for (i in seq_len(eta)) {
     y <- logsumexp(model(x))
     jacobian <- torch::autograd_grad(
       outputs = y,
       inputs = x,
-      grad_outputs = torch::torch_ones_like(y),
-      retain_graph = TRUE,
-      create_graph = TRUE,
-      allow_unused = TRUE
+      grad_outputs = torch::torch_ones_like(y)
     )
-    noise <- torch::torch_randn(size = x$shape, device = device) * sigma
+    noise <- torch::torch_randn(size = x$shape, device = x$device) * sigma
     x <- x + jacobian[[1]] * alpha + noise
   }
   x <- x$detach()
-  buffer$add(x)
-
+  
   x
 }
 
@@ -61,13 +45,18 @@ train <- function(model, buffer, train_dl, optimizer, loss_fn) {
       data <- batch[[1]]$to(device = device)
       targets <- batch[[2]]$to(device = device)
 
-      # classifier loss
+      # Classifier loss
       logits <- model(data)
       loss_clf <- loss_fn(logits, targets)
 
       # EBM loss
-      data_sample <- sgld_sample(model, buffer)
-      logsumexp_sample <- logsumexp(model(data_sample))
+      # p(x)_0
+      x <- buffer$get_batch(config::get("batch_size"), config::get("rho"))
+      x <- sgld_sample(model, x)
+      buffer$add(x)
+      
+      # Computes energy loss
+      logsumexp_sample <- logsumexp(model(x))
       logsumexp_data <- logsumexp(model(data))
       loss_gen <- -torch::torch_mean(logsumexp_data - logsumexp_sample)
 
@@ -93,25 +82,24 @@ main <- function() {
   model <- mlp(n_classes = 10)
   model$to(device = config::get("device"))
 
-  mnist_dataset <- torchvision::mnist_dataset(
+  train_ds <- torchvision::mnist_dataset(
     root = ".",
     download = TRUE,
     transform = function(x) {
-      torchvision::transform_to_tensor(x)$mul(2)$sub(1)
+      x <- torchvision::transform_to_tensor(x)$mul(2)$sub(1)
+      torch::torch_flatten(x, start_dim = 1)
     }
   )
-
-  buffer <- replay_buffer(buffer_size = config::get("buffer_size"))
-  init <- torch::torch_empty(
-    size = c(100, mnist_dataset[1][[1]]$shape)
-  )
-  init <- init$uniform_(-1, 1)$to(device = config::get("device"))
-  buffer$add(init)
-
+  
   train_dl <- torch::dataloader(
-    dataset = mnist_dataset,
+    dataset = train_ds,
     batch_size = config::get("batch_size"),
     shuffle = TRUE
+  )
+
+  buffer <- replay_buffer(
+    buffer_size = config::get("buffer_size"), 
+    dim = train_ds[1][[1]]$shape
   )
 
   optimizer <- torch::optim_adam(
