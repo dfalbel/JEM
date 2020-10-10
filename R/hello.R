@@ -22,7 +22,7 @@ sgld_sample <- function(model, buffer) {
   buffer_batch <- buffer$get_batch(n)
 
   size <- c(batch_size - n, buffer_batch$shape[-1])
-  random_batch <- torch::torch_empty(size = size)$uniform_(-1, 1)
+  random_batch <- torch::torch_empty(size = size)$uniform_(-1, 1)$to(device = device)
 
   x <- torch::torch_cat(list(buffer_batch, random_batch))
   x <- x$to(device = device)
@@ -38,8 +38,8 @@ sgld_sample <- function(model, buffer) {
       create_graph = TRUE,
       allow_unused = TRUE
     )
-    noise <- sigma * torch::torch_randn(size = x$shape, device = device)
-    x <- x + alpha * jacobian[[1]] + noise
+    noise <- torch::torch_randn(size = x$shape, device = device) * sigma
+    x <- x + jacobian[[1]] * alpha + noise
   }
   x <- x$detach()
   buffer$add(x)
@@ -61,10 +61,11 @@ train <- function(model, buffer, train_dl, optimizer, loss_fn) {
       data <- batch[[1]]$to(device = device)
       targets <- batch[[2]]$to(device = device)
 
+      # classifier loss
       logits <- model(data)
-
       loss_clf <- loss_fn(logits, targets)
 
+      # EBM loss
       data_sample <- sgld_sample(model, buffer)
       logsumexp_sample <- logsumexp(model(data_sample))
       logsumexp_data <- logsumexp(model(data))
@@ -91,6 +92,7 @@ main <- function() {
 
   model <- cnn(n_classes = 10)
   model <- mlp(n_classes = 10)
+  model$to(device = config::get("device"))
 
   mnist_dataset <- torchvision::mnist_dataset(
     root = ".",
