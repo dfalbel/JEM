@@ -69,8 +69,7 @@ train <- function(model, buffer, train_dl, optimizer, loss_fn) {
       data_sample <- sgld_sample(model, buffer)
       logsumexp_sample <- logsumexp(model(data_sample))
       logsumexp_data <- logsumexp(model(data))
-
-      loss_gen <- -(logsumexp_data - logsumexp_sample)$mean()
+      loss_gen <- -torch::torch_mean(logsumexp_data - logsumexp_sample)
 
       L <- loss_clf + loss_gen
 
@@ -104,9 +103,9 @@ main <- function() {
 
   buffer <- replay_buffer(buffer_size = config::get("buffer_size"))
   init <- torch::torch_empty(
-    size = c(100, mnist_dataset[1][[1]]$shape),
-    device = config::get("device")
+    size = c(100, mnist_dataset[1][[1]]$shape)
   )
+  init <- init$uniform_(-1, 1)$to(device = config::get("device"))
   buffer$add(init)
 
   train_dl <- torch::dataloader(
