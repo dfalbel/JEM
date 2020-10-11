@@ -101,6 +101,24 @@ valid <- function(model, valid_dl, loss_fn, config) {
 #' @param config a config list with the information below. If empty, will use
 #'   the config.yml in the working directory.
 #'   
+#' @section Configuration
+#' 
+#' The configuration object has the following options:
+#' 
+#' ```
+#' dataset: "mnist"
+#' model: "mlp"
+#' n_epochs: 20
+#' lr: 0.001
+#' rho: 0.05
+#' eta: 20
+#' sigma: 0.01
+#' alpha: 1
+#' buffer_size: 10000
+#' device: "cuda"
+#' batch_size: 100
+#' ```
+#'   
 #' @return
 #' Returns all experiment information. Losses, model, buffer and configuration.
 #'
@@ -173,7 +191,7 @@ generate_samples <- function(experiment, n, eta = NULL) {
   b <- experiment$buffer$get_batch(n, reinit_freq = 1) # all randomly initialized
   
   if (!is.null(eta))
-    config$eta <- eta
+    experiment$config$eta <- eta
   
   samps <- sgld_sample(experiment$model, b, config = experiment$config)
   samps <- torch::torch_clamp(samps, -1, 1)$

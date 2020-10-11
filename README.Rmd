@@ -1,0 +1,60 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# JEM
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+An R implementation of ['Your Classifier is Secretly an Energy Based Model and You Should Treat it Like One'](https://arxiv.org/abs/1912.03263). Code heavily inspired by [https://github.com/tohmae/pytorch-jem](https://github.com/tohmae/pytorch-jem) and [https://github.com/wgrathwohl/JEM](https://github.com/wgrathwohl/JEM).
+
+## Installation
+
+JEM is not on CRAN and can be installed with:
+
+``` r
+remotes::install_github("dfalbel/JEM")
+```
+
+## Experiment
+
+We are going to use the following configuration:
+
+```
+default:
+  dataset: "mnist"
+  model: "mlp"
+  n_epochs: 5
+  lr: 0.001
+  rho: 0.05
+  eta: 20
+  sigma: 0.01
+  alpha: 1
+  buffer_size: 10000
+  device: "cuda"
+  batch_size: 100
+```
+
+```{r example}
+experiment <- JEM::run_experiment()
+```
+
+After the model is run, you can generate samples from p(x) with:
+
+```{r}
+samples <- JEM::generate_samples(experiment, 64, eta = 200)
+JEM::plot_samples(samples)
+```
+
