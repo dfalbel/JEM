@@ -97,8 +97,7 @@ valid <- function(model, valid_dl, loss_fn, config) {
 
 run_experiment <- function(config = config::get()) {
   
-  cat("Experiment config: \n")
-  print(str(config))
+  print_config(config)
   
   ds <- get_datasets(config$dataset)
   
@@ -115,7 +114,7 @@ run_experiment <- function(config = config::get()) {
   )
 
   buffer <- replay_buffer(
-    buffer_size = config$batch_size, 
+    buffer_size = config$buffer_size, 
     dim = ds$train[1][[1]]$shape,
     device = config$device
   )
@@ -134,12 +133,50 @@ run_experiment <- function(config = config::get()) {
 
   loss_fn <- torch::nn_cross_entropy_loss()
   
+  valid_metrics <- list()
   for (epoch in seq_len(config$n_epochs)) {
     train_losses <- train(model, buffer, train_dl, optimizer, loss_fn, config)
     metrics <- valid(model, valid_dl, loss_fn, config)
+    valid_metrics[[epoch]] <- metrics
     cat(sprintf("[Epoch %d] Train{Loss: %3f} Valid{Loss: %3f, Acc: %3f}\n", 
                 epoch, mean(train_losses), metrics$loss, metrics$acc))
   }
   
-  model
+  list(
+    model = model,
+    buffer = buffer,
+    train_losses = train_losses,
+    valid_metrics = valid_metrics,
+    config = config
+  )
+}
+
+generate_samples <- function(experiment, n, eta = NULL) {
+  
+  b <- experiment$buffer$get_batch(n, reinit_freq = 1) # all randomly initialized
+  
+  if (!is.null(eta))
+    config$eta <- eta
+  
+  samps <- sgld_sample(experiment$model, b, config = experiment$config)
+  samps <- torch::torch_clamp(samps, -1, 1)$
+    add(1)$
+    div(2)$
+    to(device = "cpu")
+  
+  samps
+}
+
+plot_samples <- function(samps, nrow = 8) {
+  
+  grid <- torchvision::vision_make_grid(samps, num_rows = nrow)
+  
+  if (grid$shape[1] == 1)
+    grid <- torch::torch_cat(list(grid, grid, grid), 1)
+  
+  grid <- grid$transpose(1, 3) # channels last
+  grid %>% 
+    as.array() %>% 
+    as.raster() %>% 
+    plot()
 }
