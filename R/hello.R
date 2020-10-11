@@ -3,7 +3,7 @@ logsumexp <- function(x) {
   torch::torch_logsumexp(x, dim = 2)
 }
 
-sgld_sample <- function(model, x, config = config::get()) {
+sgld_sample <- function(model, x, config) {
 
   eta <- config$eta
   alpha <- config$alpha
@@ -25,10 +25,10 @@ sgld_sample <- function(model, x, config = config::get()) {
   x
 }
 
-train <- function(model, buffer, train_dl, optimizer, loss_fn, config = config::get()) {
+train <- function(model, buffer, train_dl, optimizer, loss_fn, config) {
 
+  model$train()
   device <- config$device
-
   losses <- c()
   pb <- bar(length = length(train_dl))
   
@@ -44,7 +44,7 @@ train <- function(model, buffer, train_dl, optimizer, loss_fn, config = config::
     # EBM loss
     # p(x)_0
     x <- buffer$get_batch(config$batch_size, config$rho)
-    x <- sgld_sample(model, x)
+    x <- sgld_sample(model, x, config)
     buffer$add(x)
     
     # Computes energy loss
@@ -65,7 +65,7 @@ train <- function(model, buffer, train_dl, optimizer, loss_fn, config = config::
   losses
 }
 
-valid <- function(model, valid_dl, loss_fn, config = config::get()) {
+valid <- function(model, valid_dl, loss_fn, config) {
   
   model$eval()
   correct <- 0
@@ -96,7 +96,10 @@ valid <- function(model, valid_dl, loss_fn, config = config::get()) {
 
 
 run_experiment <- function(config = config::get()) {
-
+  
+  cat("Experiment config: \n")
+  print(str(config))
+  
   ds <- get_datasets(config$dataset)
   
   train_dl <- torch::dataloader(
@@ -113,7 +116,8 @@ run_experiment <- function(config = config::get()) {
 
   buffer <- replay_buffer(
     buffer_size = config$batch_size, 
-    dim = ds$train[1][[1]]$shape
+    dim = ds$train[1][[1]]$shape,
+    device = config$device
   )
   
   if (config$model == "cnn")

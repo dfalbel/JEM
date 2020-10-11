@@ -1,9 +1,10 @@
 replay_buffer <- torch::nn_module(
-  initialize = function(buffer_size, dim) {
+  initialize = function(buffer_size, dim, device) {
     self$max_size <- buffer_size
     self$dim <- dim
     self$buffer <- list()
     self$init_length <- 0
+    self$device <- device
   },
   next_buffer_idx = function() {
     if (length(self$buffer) < self$max_size)
@@ -42,7 +43,7 @@ replay_buffer <- torch::nn_module(
     # random sample, same size
     if (n_random > 0) {
       size <- c(n_random, self$dim)
-      random_batch <- torch::torch_empty(size = size)$uniform_(-1, 1)$to(device = config::get("device"))  
+      random_batch <- torch::torch_empty(size = size)$uniform_(-1, 1)$to(device = self$device)  
       tensors <- append(tensors, list(random_batch))
     }
     
