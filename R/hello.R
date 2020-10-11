@@ -3,11 +3,11 @@ logsumexp <- function(x) {
   torch::torch_logsumexp(x, dim = 2)
 }
 
-sgld_sample <- function(model, x) {
+sgld_sample <- function(model, x, config = config::get()) {
 
-  eta <- config::get("eta")
-  alpha <- config::get("alpha")
-  sigma <- config::get("sigma")
+  eta <- config$eta
+  alpha <- config$alpha
+  sigma <- config$sigma
   
   x$requires_grad_(TRUE)
   for (i in seq_len(eta)) {
@@ -25,9 +25,9 @@ sgld_sample <- function(model, x) {
   x
 }
 
-train <- function(model, buffer, train_dl, optimizer, loss_fn) {
+train <- function(model, buffer, train_dl, optimizer, loss_fn, config = config::get()) {
 
-  device <- config::get("device")
+  device <- config$device
 
   losses <- c()
   pb <- bar(length = length(train_dl))
@@ -43,7 +43,7 @@ train <- function(model, buffer, train_dl, optimizer, loss_fn) {
     
     # EBM loss
     # p(x)_0
-    x <- buffer$get_batch(config::get("batch_size"), config::get("rho"))
+    x <- buffer$get_batch(config$batch_size, config$rho)
     x <- sgld_sample(model, x)
     buffer$add(x)
     
@@ -65,7 +65,7 @@ train <- function(model, buffer, train_dl, optimizer, loss_fn) {
   losses
 }
 
-valid <- function(model, valid_dl, loss_fn) {
+valid <- function(model, valid_dl, loss_fn, config = config::get()) {
   
   model$eval()
   correct <- 0
@@ -75,8 +75,8 @@ valid <- function(model, valid_dl, loss_fn) {
   torch::with_no_grad({
     for (batch in torch::enumerate(valid_dl)) {
       
-      data <- batch[[1]]$to(device = config::get("device"))
-      targets <- batch[[2]]$to(device = config::get("device"))
+      data <- batch[[1]]$to(device = config$device)
+      targets <- batch[[2]]$to(device = config$device)
       
       logits <- model(data)
       predicted <- torch::torch_max(logits, dim = 2)[[2]]
@@ -92,49 +92,50 @@ valid <- function(model, valid_dl, loss_fn) {
   
   acc <- correct/n
   list(acc = acc, correct = correct, n = n, loss = mean(losses))
-}
+} 
 
 
-main <- function() {
+run_experiment <- function(config = config::get()) {
 
-  ds <- get_datasets(config::get("dataset"))
+  ds <- get_datasets(config$dataset)
   
   train_dl <- torch::dataloader(
     dataset = ds$train,
-    batch_size = config::get("batch_size"),
+    batch_size = config$batch_size,
     shuffle = TRUE
   )
   
   valid_dl <- torch::dataloader(
     dataset = ds$valid,
-    batch_size = config::get("batch_size"),
+    batch_size = config$batch_size,
     shuffle = FALSE
   )
 
   buffer <- replay_buffer(
-    buffer_size = config::get("buffer_size"), 
+    buffer_size = config$batch_size, 
     dim = ds$train[1][[1]]$shape
   )
   
-  if (config::get("model") == "cnn")
+  if (config$model == "cnn")
     model <- cnn(n_classes = ds$n_classes)
-  else if (config::get("model") == "mlp")
+  else if (config$model == "mlp")
     model <- mlp(n_classes = ds$n_classes)
   
-  model$to(device = config::get("device"))
+  model$to(device = config$device)
 
   optimizer <- torch::optim_adam(
     params = model$parameters,
-    lr = config::get("lr")
+    lr = config$lr
   )
 
   loss_fn <- torch::nn_cross_entropy_loss()
   
-  for (epoch in seq_len(config::get("n_epochs"))) {
-    train_losses <- train(model, buffer, train_dl, optimizer, loss_fn)
-    metrics <- valid(model, valid_dl, loss_fn)
+  for (epoch in seq_len(config$n_epochs)) {
+    train_losses <- train(model, buffer, train_dl, optimizer, loss_fn, config)
+    metrics <- valid(model, valid_dl, loss_fn, config)
     cat(sprintf("[Epoch %d] Train{Loss: %3f} Valid{Loss: %3f, Acc: %3f}\n", 
                 epoch, mean(train_losses), metrics$loss, metrics$acc))
   }
   
+  model
 }
