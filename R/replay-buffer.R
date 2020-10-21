@@ -14,6 +14,8 @@ replay_buffer <- torch::nn_module(
   },
   add = function(episodes) {
 
+    episodes <- episodes$x
+    
     # allows passing a batch of tensors
     if (torch:::is_torch_tensor(episodes)) {
       episodes <- torch::torch_unbind(episodes)
@@ -47,6 +49,70 @@ replay_buffer <- torch::nn_module(
       tensors <- append(tensors, list(random_batch))
     }
     
-    torch::torch_cat(tensors)
+    list(x = torch::torch_cat(tensors), y  = NULL)
+  }
+)
+
+conditional_replay_buffer <- torch::nn_module(
+  "conditional_replay_buffer",
+  initialize = function(n_class, buffer_size, dim, device) {
+    self$n_class <- n_class
+    self$buffer_size <- as.integer(buffer_size/n_class)
+    self$buffer <- vector(mode = "list", length = buffer_size)
+    self$sizes <- rep(0, n_class)
+    self$dim <- dim
+    self$device <- device
+  },
+  id_from_y = function(id, y) {
+    (y - 1)*self$buffer_size + id
+  },
+  next_buffer_idx = function(y) {
+    y <- y$item()
+    
+    if (self$sizes[y] < self$buffer_size) {
+      self$sizes[y] <- self$sizes[y] + 1  
+      id <- self$sizes[y]
+    } else {
+      id <- sample.int(self$buffer_size, size = 1)
+    }
+      
+    self$id_from_y(id, y)
+  },
+  add = function(episodes) {
+    
+    y <- episodes$y
+    episodes <- episodes$x
+    
+    # allows passing a batch of tensors
+    if (torch:::is_torch_tensor(episodes)) {
+      episodes <- torch::torch_unbind(episodes)
+    }
+    
+    if (torch:::is_torch_tensor(y)) {
+      y <- torch::torch_unbind(y)
+    }
+    
+    for (i in seq_along(episodes)) {
+      id <- self$next_buffer_idx(y[[i]])
+      self$buffer[[id]] <- episodes[[i]]
+    }
+  },
+  get_batch = function(n, reinit_freq) {
+    
+    y <- sample.int(self$n_class, size = n, replace = TRUE)
+    
+    batch <- vector(mode = "list", length = length(y))
+    for (i in seq_along(y)) {
+      r <- runif(1)
+      if (r < reinit_freq || self$sizes[y[i]] <= 0) {
+        batch[[i]] <- torch::torch_empty(size = self$dim)$uniform_(-1, 1)$to(device = self$device)  
+      } else {
+        id <- sample.int(self$sizes[y[i]], size = 1)
+        id <- self$id_from_y(id, y[i])
+        batch[[i]] <- self$buffer[[id]]
+      }
+    }
+    
+    list(x = torch::torch_stack(batch), y = torch::torch_tensor(y, device = self$device))
   }
 )

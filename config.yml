@@ -10,3 +10,4 @@ default:
   buffer_size: 10000
   device: "cuda"
   batch_size: 100
+  conditional: true

@@ -3,25 +3,30 @@ logsumexp <- function(x) {
   torch::torch_logsumexp(x, dim = 2)
 }
 
-sgld_sample <- function(model, x, config) {
+sgld_sample <- function(model, data, config) {
 
+  x <- data$x
+  y_ <- data$y
+  
   eta <- config$eta
   alpha <- config$alpha
   sigma <- config$sigma
   
   x$requires_grad_(TRUE)
   for (i in seq_len(eta)) {
-    y <- logsumexp(model(x))
+    
+    y <- model(x, y_)
+    
     jacobian <- torch::autograd_grad(
       outputs = y,
       inputs = x,
       grad_outputs = torch::torch_ones_like(y)
     )
+    
     noise <- torch::torch_randn(size = x$shape, device = x$device) * sigma
     x <- x + jacobian[[1]] * alpha + noise
   }
   x <- x$detach()
-  
   x
 }
 
@@ -38,20 +43,25 @@ train <- function(model, buffer, train_dl, optimizer, loss_fn, config) {
     targets <- batch[[2]]$to(device = device)
     
     # Classifier loss
-    logits <- model(data)
+    logits <- model$classifier(data)
     loss_clf <- loss_fn(logits, targets)
     
     # EBM loss
     # p(x)_0
-    x <- buffer$get_batch(config$batch_size, config$rho)
-    x <- sgld_sample(model, x, config)
-    buffer$add(x)
+    sampl <- buffer$get_batch(config$batch_size, config$rho)
+    sampl$x <- sgld_sample(model, sampl, config)
+    buffer$add(sampl)
     
     # Computes energy loss
-    logsumexp_sample <- logsumexp(model(x))
-    logsumexp_data <- logsumexp(model(data))
-    loss_gen <- -torch::torch_mean(logsumexp_data - logsumexp_sample)
+    if (!config$conditional) {
+      p_sample <- model(sampl$x)
+      p_data <- model(data)
+    } else {
+      p_sample <- model(sampl$x, sampl$y)
+      p_data <- model(data, targets)
+    }
     
+    loss_gen <- -torch::torch_mean(p_data - p_sample)
     L <- loss_clf + loss_gen
     
     optimizer$zero_grad()
@@ -78,7 +88,7 @@ valid <- function(model, valid_dl, loss_fn, config) {
       data <- batch[[1]]$to(device = config$device)
       targets <- batch[[2]]$to(device = config$device)
       
-      logits <- model(data)
+      logits <- model$classifier(data)
       predicted <- torch::torch_max(logits, dim = 2)[[2]]
       
       correct <- correct + predicted$eq(targets)$sum()$item()
@@ -93,6 +103,24 @@ valid <- function(model, valid_dl, loss_fn, config) {
   acc <- correct/n
   list(acc = acc, correct = correct, n = n, loss = mean(losses))
 } 
+
+ebm_model <- torch::nn_module(
+  "abstract_model",
+  initialize = function(type, n_classes) {
+    if (type == "cnn")
+      self$classifier <- cnn(n_classes = n_classes)
+    else if (type == "mlp")
+      self$classifier <- mlp(n_classes = n_classes)
+  }, 
+  forward = function(x, y = NULL) {
+    logits <- self$classifier(x)
+    if (is.null(y))
+      logsumexp(logits)
+    else {
+      torch::torch_gather(logits, dim = 2L, index = y$unsqueeze(2))
+    }
+  }
+)
 
 #' Run experiment
 #' 
@@ -141,17 +169,21 @@ run_experiment <- function(config = config::get()) {
     shuffle = FALSE
   )
 
-  buffer <- replay_buffer(
-    buffer_size = config$buffer_size, 
-    dim = ds$train[1][[1]]$shape,
-    device = config$device
-  )
+  if (!config$conditional)
+    buffer <- replay_buffer(
+      buffer_size = config$buffer_size, 
+      dim = ds$train[1][[1]]$shape,
+      device = config$device
+    )
+  else
+    buffer <- conditional_replay_buffer(
+      n_class = length(ds$train$classes),
+      buffer_size = config$buffer_size,
+      dim = ds$train[1][[1]]$shape,
+      device = config$device
+    )
   
-  if (config$model == "cnn")
-    model <- cnn(n_classes = ds$n_classes)
-  else if (config$model == "mlp")
-    model <- mlp(n_classes = ds$n_classes)
-  
+  model <- ebm_model(config$model, ds$n_classes)
   model$to(device = config$device)
 
   optimizer <- torch::optim_adam(
