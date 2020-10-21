@@ -30,31 +30,21 @@ remotes::install_github("dfalbel/JEM")
 
 ## Experiment
 
-We are going to use the following configuration:
-
-```
-default:
-  dataset: "mnist"
-  model: "mlp"
-  n_epochs: 5
-  lr: 0.001
-  rho: 0.05
-  eta: 20
-  sigma: 0.01
-  alpha: 1
-  buffer_size: 10000
-  device: "cuda"
-  batch_size: 100
-```
+You can run an experiment with the `run_experiment` function. The configuration is found
+by default in the `config.yaml` file in the root directory.
 
 ```{r example}
 experiment <- JEM::run_experiment()
 ```
 
-After the model is run, you can generate samples from p(x) with:
+After the model is run, you can generate samples from $p(x|y)$ with:
 
 ```{r}
-samples <- JEM::generate_samples(experiment, 64, eta = 200)
-JEM::plot_samples(samples)
+samples <- JEM::generate_samples(
+  experiment, 
+  rep(1:9, each = 10), 
+  eta = 200
+)
+JEM::plot_samples(samples, nrow = 10)
 ```
 

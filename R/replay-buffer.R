@@ -99,7 +99,10 @@ conditional_replay_buffer <- torch::nn_module(
   },
   get_batch = function(n, reinit_freq) {
     
-    y <- sample.int(self$n_class, size = n, replace = TRUE)
+    if (length(n) == 1)
+      y <- sample.int(self$n_class, size = n, replace = TRUE)
+    else
+      y <- as.integer(n)
     
     batch <- vector(mode = "list", length = length(y))
     for (i in seq_along(y)) {
