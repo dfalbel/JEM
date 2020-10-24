@@ -105,12 +105,12 @@ valid <- function(model, valid_dl, loss_fn, config) {
 } 
 
 ebm_model <- torch::nn_module(
-  "abstract_model",
-  initialize = function(type, n_classes) {
+  "ebm_model",
+  initialize = function(type, n_classes, input_dim) {
     if (type == "cnn")
-      self$classifier <- cnn(n_classes = n_classes)
+      self$classifier <- cnn(n_classes = n_classes, input_dim)
     else if (type == "mlp")
-      self$classifier <- mlp(n_classes = n_classes)
+      self$classifier <- mlp(n_classes = n_classes, input_dim)
   }, 
   forward = function(x, y = NULL) {
     logits <- self$classifier(x)
@@ -168,22 +168,24 @@ run_experiment <- function(config = config::get()) {
     batch_size = config$batch_size,
     shuffle = FALSE
   )
+  
+  input_shape <- ds$train[1][[1]]$shape
 
   if (!config$conditional)
     buffer <- replay_buffer(
       buffer_size = config$buffer_size, 
-      dim = ds$train[1][[1]]$shape,
+      dim = input_shape,
       device = config$device
     )
   else
     buffer <- conditional_replay_buffer(
       n_class = length(ds$train$classes),
       buffer_size = config$buffer_size,
-      dim = ds$train[1][[1]]$shape,
+      dim = input_shape,
       device = config$device
     )
   
-  model <- ebm_model(config$model, ds$n_classes)
+  model <- ebm_model(config$model, ds$n_classes, input_shape)
   model$to(device = config$device)
 
   optimizer <- torch::optim_adam(
